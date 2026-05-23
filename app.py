@@ -48,7 +48,7 @@ class FaceAnalyzer(VideoTransformerBase):
         self.last_process_time = time.time()
         self.yolo, self.emo, self.gen, self.age = models
 
-    ddef transform(self, frame):
+    def transform(self, frame):
         print("Transforming frame...") # ADD THIS LINE
         img = frame.to_ndarray(format="bgr24")
         # ... (Your YOLO logic here) ...
