@@ -158,10 +158,23 @@ if models:
                 gen = max(models[2](crop), key=lambda x: x['score'])['label']
                 
                 cv2.rectangle(cv2_img, (x1, y1), (x2, y2), (255, 165, 0), 2)
+                # 2. Define label and text parameters
                 label = f"ID: {i+1}"
-                cv2.putText(cv2_img, label, (x1, y1 - 10), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 165, 0), 2)
-
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                font_scale = 0.6
+                thickness = 2
+                
+                # Get size of the text box
+                (text_width, text_height), baseline = cv2.getTextSize(label, font, font_scale, thickness)
+                
+                # 3. Draw blue filled rectangle as background for the label
+                # Coordinates: (x1, y1 - text_height - 10) to (x1 + text_width, y1)
+                cv2.rectangle(cv2_img, (x1, y1 - text_height - 10), (x1 + text_width, y1), (255, 0, 0), cv2.FILLED)
+                
+                # 4. Draw white text on top
+                cv2.putText(cv2_img, label, (x1, y1 - 5), 
+                            font, font_scale, (255, 255, 255), thickness)
+                
                 frame_results.append({'ID': i+1, 'Age': age, 'Emotion': emo.capitalize(), 'Gender': gen.capitalize()})
             
             # 4. Display Results
