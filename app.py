@@ -48,9 +48,9 @@ class FaceAnalyzer(VideoTransformerBase):
         self.last_process_time = time.time()
         self.yolo, self.emo, self.gen, self.age = models
 
-    def transform(self, frame):
+    ddef transform(self, frame):
+        print("Transforming frame...") # ADD THIS LINE
         img = frame.to_ndarray(format="bgr24")
-        
         # ... (Your YOLO logic here) ...
         
         # Automated 5-second Capture
@@ -135,7 +135,12 @@ if models:
                 with col2: st.dataframe(pd.DataFrame(frame_data).set_index('ID'), use_container_width=True)
 
     elif mode == "Live Webcam":
-        webrtc_streamer(key="face-analysis", video_transformer_factory=lambda: FaceAnalyzer(models))
+        webrtc_streamer(
+            key="face-analysis", 
+            video_transformer_factory=lambda: FaceAnalyzer(models),
+            media_stream_constraints={"video": True, "audio": False},
+            rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+        )
         
         if st.button("🔄 Sync & Refresh"):
             # Move data from the class into session_state
