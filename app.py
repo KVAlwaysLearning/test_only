@@ -76,19 +76,7 @@ if models:
     yolo, emotion_pipe, gender_pipe, age_model = models
     mode = st.radio("Choose Input Method:", ["File Upload", "Live Webcam"])
 
-    # --- DEBUG PANEL ---
-    with st.sidebar:
-        st.subheader("🛠️ Debugger")
-        if 'webcam_frames' in st.session_state:
-            st.write(f"Total Captures in Dict: {len(st.session_state['webcam_frames'])}")
-            st.write("Current Keys:", list(st.session_state['webcam_frames'].keys()))
-            
-            # Show the last capture time
-            if st.session_state['webcam_frames']:
-                last_key = sorted(list(st.session_state['webcam_frames'].keys()))[-1]
-                st.info(f"Last capture: {last_key}")
-        else:
-            st.write("No data captured yet.")
+   
 
     if mode == "File Upload":
         uploaded_video = st.file_uploader("Upload a video", type=["mp4", "mov", "avi"])
