@@ -156,8 +156,13 @@ if models:
                 age = int(models[3].predict(np.expand_dims(np.array(crop.resize((224,224)), dtype=np.float32)/255.0, axis=0), verbose=0)[0][0])
                 emo = max(models[1](crop), key=lambda x: x['score'])['label']
                 gen = max(models[2](crop), key=lambda x: x['score'])['label']
-                frame_results.append({'ID': i+1, 'Age': age, 'Emotion': emo.capitalize(), 'Gender': gen.capitalize()})
+                
                 cv2.rectangle(cv2_img, (x1, y1), (x2, y2), (255, 165, 0), 2)
+                label = f"ID: {i+1}"
+                cv2.putText(cv2_img, label, (x1, y1 - 10), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 165, 0), 2)
+
+                frame_results.append({'ID': i+1, 'Age': age, 'Emotion': emo.capitalize(), 'Gender': gen.capitalize()})
             
             # 4. Display Results
             col1, col2 = st.columns([2, 1])
