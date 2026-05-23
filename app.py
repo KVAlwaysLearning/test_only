@@ -118,15 +118,29 @@ if models:
                 with col2: st.dataframe(pd.DataFrame(frame_data).set_index('ID'), use_container_width=True)
 
     elif mode == "Live Webcam":
+        # webrtc_streamer returns an object that tracks the status of the stream
         ctx = webrtc_streamer(key="face-analysis", video_transformer_factory=lambda: FaceAnalyzer(models))
-        if ctx.video_transformer and ctx.video_transformer.latest_capture:
-            cap_img, cap_data, ts = ctx.video_transformer.latest_capture
-            key = f"Capture at {ts}"
-            if 'webcam_frames' not in st.session_state: st.session_state['webcam_frames'] = {}
-            st.session_state['webcam_frames'][key] = (cap_img, cap_data)
         
-        if st.session_state.get('webcam_frames'):
-            selected = st.selectbox("Select Snapshot:", list(st.session_state['webcam_frames'].keys()))
+        # Check if ctx is initialized AND if the transformer is active
+        if ctx is not None and ctx.video_transformer:
+            # Check for our custom captured data
+            if hasattr(ctx.video_transformer, 'latest_capture') and ctx.video_transformer.latest_capture:
+                cap_img, cap_data, ts = ctx.video_transformer.latest_capture
+                key = f"Capture at {ts}"
+                
+                if 'webcam_frames' not in st.session_state: 
+                    st.session_state['webcam_frames'] = {}
+                
+                # Only update session state if this is a new capture
+                if key not in st.session_state['webcam_frames']:
+                    st.session_state['webcam_frames'][key] = (cap_img, cap_data)
+        
+        # Display Gallery
+        if 'webcam_frames' in st.session_state and st.session_state['webcam_frames']:
+            # Use sorted keys to keep the newest capture at the top/bottom
+            snapshot_keys = sorted(list(st.session_state['webcam_frames'].keys()))
+            selected = st.selectbox("Select Snapshot:", snapshot_keys)
+            
             img, data = st.session_state['webcam_frames'][selected]
             st.image(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), use_container_width=True)
             st.dataframe(pd.DataFrame(data).set_index('ID'), use_container_width=True)
