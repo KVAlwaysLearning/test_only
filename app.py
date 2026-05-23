@@ -181,5 +181,12 @@ if models:
             col1, col2 = st.columns([2, 1])
             with col1:
                 st.image(cv2.cvtColor(cv2_img, cv2.COLOR_BGR2RGB), use_container_width=True)
+            
             with col2:
-                st.dataframe(pd.DataFrame(frame_results).set_index('ID'))
+                if frame_results:
+                    # Data exists, safe to set index
+                    df = pd.DataFrame(frame_results).set_index('ID')
+                    st.dataframe(df)
+                else:
+                    # No faces detected, show a warning instead of crashing
+                    st.warning("No faces detected in this snapshot.")
