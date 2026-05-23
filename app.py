@@ -135,18 +135,33 @@ if models:
                 with col2: st.dataframe(pd.DataFrame(frame_data).set_index('ID'), use_container_width=True)
 
     elif mode == "Live Webcam":
-        webrtc_streamer(
-            key="face-analysis", 
-            video_transformer_factory=lambda: FaceAnalyzer(models),
-            media_stream_constraints={"video": True, "audio": False},
-            rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
-        )
+        st.write("### Live Face Analysis")
+        # st.camera_input handles the browser-side hardware connection
+        camera_file = st.camera_input("Take a snapshot")
         
-        if st.button("🔄 Sync & Refresh"):
-            # Move data from the class into session_state
-            if 'webcam_frames' not in st.session_state: st.session_state['webcam_frames'] = {}
+        if camera_file is not None:
+            # 1. Convert uploaded file to OpenCV format
+            bytes_data = camera_file.getvalue()
+            cv2_img = cv2.imdecode(np.frombuffer(bytes_data, np.uint8), cv2.IMREAD_COLOR)
             
-            for item in FaceAnalyzer.captured_data:
-                st.session_state['webcam_frames'][item['key']] = (item['img'], item['results'])
+            # 2. Perform Inference (Your existing Model Pipeline)
+            results = models[0](cv2_img, classes=[0], verbose=False)
+            coords = [list(map(int, b.xyxy[0])) for b in results[0].boxes]
             
-            st.rerun()
+            # 3. Process and display
+            pil_img = Image.fromarray(cv2.cvtColor(cv2_img, cv2.COLOR_BGR2RGB))
+            frame_results = []
+            for i, (x1, y1, x2, y2) in enumerate(coords):
+                crop = pil_img.crop((x1, y1, x2, y2))
+                age = int(models[3].predict(np.expand_dims(np.array(crop.resize((224,224)), dtype=np.float32)/255.0, axis=0), verbose=0)[0][0])
+                emo = max(models[1](crop), key=lambda x: x['score'])['label']
+                gen = max(models[2](crop), key=lambda x: x['score'])['label']
+                frame_results.append({'ID': i+1, 'Age': age, 'Emotion': emo.capitalize(), 'Gender': gen.capitalize()})
+                cv2.rectangle(cv2_img, (x1, y1), (x2, y2), (255, 165, 0), 2)
+            
+            # 4. Display Results
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                st.image(cv2.cvtColor(cv2_img, cv2.COLOR_BGR2RGB), use_container_width=True)
+            with col2:
+                st.dataframe(pd.DataFrame(frame_results).set_index('ID'))
