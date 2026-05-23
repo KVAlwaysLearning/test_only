@@ -114,18 +114,32 @@ if models:
                 with col2: st.dataframe(pd.DataFrame(frame_data).set_index('ID'), use_container_width=True)
 
     elif mode == "Live Webcam":
-        st.write("Live feed active. Snapshots are saved automatically every 5 seconds.")
-        webrtc_streamer(
-            key="face-analysis", 
-            video_transformer_factory=lambda: FaceAnalyzer(models)
-        )
-        
-        # Display Gallery
-        if 'webcam_frames' in st.session_state and st.session_state['webcam_frames']:
-            snapshot_keys = sorted(list(st.session_state['webcam_frames'].keys()))
-            selected = st.selectbox("Select Snapshot:", snapshot_keys)
+        # We track if we are currently recording or in review mode
+        if 'is_reviewing' not in st.session_state:
+            st.session_state['is_reviewing'] = False
+
+        if not st.session_state['is_reviewing']:
+            st.write("Recording... Snapshots are being saved in the background.")
+            webrtc_streamer(key="face-analysis", video_transformer_factory=lambda: FaceAnalyzer(models))
             
-            if selected in st.session_state['webcam_frames']:
+            if st.button("Stop & Review Results"):
+                st.session_state['is_reviewing'] = True
+                st.rerun()
+        
+        else:
+            # --- REVIEW MODE ---
+            st.success("Analysis Complete. Review your snapshots below:")
+            if st.button("Start New Session"):
+                st.session_state['webcam_frames'] = {}
+                st.session_state['is_reviewing'] = False
+                st.rerun()
+
+            if 'webcam_frames' in st.session_state and st.session_state['webcam_frames']:
+                keys = sorted(list(st.session_state['webcam_frames'].keys()))
+                selected = st.selectbox("Select Snapshot to Review:", keys)
+                
                 img, data = st.session_state['webcam_frames'][selected]
                 st.image(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), use_container_width=True)
                 st.dataframe(pd.DataFrame(data).set_index('ID'), use_container_width=True)
+            else:
+                st.warning("No frames were captured during the session.")
