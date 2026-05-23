@@ -38,26 +38,43 @@ def setup_environment(drive_folder_id):
     age_model = keras.models.load_model(os.path.join(BASE_MODEL_DIR, "age/best_model.h5"), compile=False)
     return yolo, emotion_pipe, gender_pipe, age_model
 
+import threading
+
 class FaceAnalyzer(VideoTransformerBase):
     def __init__(self, models):
         self.last_process_time = time.time()
         self.yolo, self.emo, self.gen, self.age = models
+        self.lock = threading.Lock() # Ensures thread safety
 
     def transform(self, frame):
         img = frame.to_ndarray(format="bgr24")
-        # ... (YOLO logic as before) ...
         
-        # CAPTURE (Every 5 seconds)
+        # 1. Always Draw boxes for the live feed
+        results = self.yolo(img, classes=[0], verbose=False)
+        for b in results[0].boxes:
+            x1, y1, x2, y2 = map(int, b.xyxy[0])
+            cv2.rectangle(img, (x1, y1), (x2, y2), (255, 165, 0), 2)
+            
+        # 2. Automated 5-second Capture
         if time.time() - self.last_process_time >= 5:
             self.last_process_time = time.time()
-            # ... (Prediction logic as before) ...
             
-            # DIRECT PUSH to session state (Bypass ctx entirely)
-            timestamp = time.strftime("%H:%M:%S")
-            key = f"Capture at {timestamp}"
-            if 'webcam_frames' not in st.session_state:
-                st.session_state['webcam_frames'] = {}
-            st.session_state['webcam_frames'][key] = (img.copy(), frame_results)
+            # Heavy lifting happens here
+            pil_img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+            frame_results = []
+            for b in results[0].boxes:
+                x1, y1, x2, y2 = map(int, b.xyxy[0])
+                crop = pil_img.crop((x1, y1, x2, y2))
+                age = int(self.age.predict(np.expand_dims(np.array(crop.resize((224,224)), dtype=np.float32)/255.0, axis=0), verbose=0)[0][0])
+                emo = max(self.emo(crop), key=lambda x: x['score'])['label']
+                gen = max(self.gen(crop), key=lambda x: x['score'])['label']
+                frame_results.append({'Age': age, 'Emotion': emo.capitalize(), 'Gender': gen.capitalize()})
+            
+            # Push to session state safely
+            with self.lock:
+                timestamp = time.strftime("%H:%M:%S")
+                if 'webcam_frames' not in st.session_state: st.session_state['webcam_frames'] = {}
+                st.session_state['webcam_frames'][f"Auto-Capture {timestamp}"] = (img.copy(), frame_results)
             
         return img
 
@@ -114,32 +131,18 @@ if models:
                 with col2: st.dataframe(pd.DataFrame(frame_data).set_index('ID'), use_container_width=True)
 
     elif mode == "Live Webcam":
-        # We track if we are currently recording or in review mode
-        if 'is_reviewing' not in st.session_state:
-            st.session_state['is_reviewing'] = False
-
-        if not st.session_state['is_reviewing']:
-            st.write("Recording... Snapshots are being saved in the background.")
-            webrtc_streamer(key="face-analysis", video_transformer_factory=lambda: FaceAnalyzer(models))
-            
-            if st.button("Stop & Review Results"):
-                st.session_state['is_reviewing'] = True
-                st.rerun()
+        st.write("Live analysis active. Frames saved automatically every 5 seconds.")
+        webrtc_streamer(key="face-analysis", video_transformer_factory=lambda: FaceAnalyzer(models))
         
-        else:
-            # --- REVIEW MODE ---
-            st.success("Analysis Complete. Review your snapshots below:")
-            if st.button("Start New Session"):
-                st.session_state['webcam_frames'] = {}
-                st.session_state['is_reviewing'] = False
-                st.rerun()
+        # This button forces the page to refresh and see the new data added by the thread
+        if st.button("Refresh Results Gallery"):
+            st.rerun()
 
-            if 'webcam_frames' in st.session_state and st.session_state['webcam_frames']:
-                keys = sorted(list(st.session_state['webcam_frames'].keys()))
-                selected = st.selectbox("Select Snapshot to Review:", keys)
-                
-                img, data = st.session_state['webcam_frames'][selected]
-                st.image(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), use_container_width=True)
-                st.dataframe(pd.DataFrame(data).set_index('ID'), use_container_width=True)
-            else:
-                st.warning("No frames were captured during the session.")
+        if 'webcam_frames' in st.session_state and st.session_state['webcam_frames']:
+            # Sort keys to show latest first
+            keys = sorted(st.session_state['webcam_frames'].keys(), reverse=True)
+            selected = st.selectbox("Select Auto-Captured Frame:", keys)
+            
+            img, data = st.session_state['webcam_frames'][selected]
+            st.image(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), use_container_width=True)
+            st.dataframe(pd.DataFrame(data))
