@@ -52,38 +52,34 @@ class FaceAnalyzer(VideoTransformerBase):
 
     def transform(self, frame):
         img = frame.to_ndarray(format="bgr24")
+        pil_img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
         
-        # Analyze every 5 seconds
-        if time.time() - self.last_process_time > 5:
-            self.last_process_time = time.time()
+        # 1. ALWAYS run detection for the live visual feed
+        results = self.yolo(img, classes=[0], verbose=False)
+        coords = [list(map(int, b.xyxy[0])) for b in results[0].boxes]
+        
+        frame_results = []
+        for i, (x1, y1, x2, y2) in enumerate(coords):
+            face_id = i + 1
+            # Crop for analysis
+            crop = pil_img.crop((x1, y1, x2, y2))
             
-            # --- Analysis Logic ---
-            pil_img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-            results = self.yolo(img, classes=[0], verbose=False)
-            coords = [list(map(int, b.xyxy[0])) for b in results[0].boxes]
-            frame_results = []
+            # Predictions (You can optimize this to run less frequently if needed)
+            age = int(self.age.predict(np.expand_dims(np.array(crop.resize((224,224)), dtype=np.float32)/255.0, axis=0), verbose=0)[0][0])
+            emo = max(self.emo(crop), key=lambda x: x['score'])['label']
+            gen = max(self.gen(crop), key=lambda x: x['score'])['label']
+            frame_results.append({'ID': face_id, 'Age': age, 'Emotion': emo.capitalize(), 'Gender': gen.capitalize()})
             
-            for i, (x1, y1, x2, y2) in enumerate(coords):
-                face_id = i + 1
-                crop = pil_img.crop((x1, y1, x2, y2))
-                
-                # Predictions
-                age = int(self.age.predict(np.expand_dims(np.array(crop.resize((224,224)), dtype=np.float32)/255.0, axis=0), verbose=0)[0][0])
-                emo = max(self.emo(crop), key=lambda x: x['score'])['label']
-                gen = max(self.gen(crop), key=lambda x: x['score'])['label']
-                
-                frame_results.append({'ID': face_id, 'Age': age, 'Emotion': emo.capitalize(), 'Gender': gen.capitalize()})
-                
-                # Drawing on the live frame
-                cv2.rectangle(img, (x1, y1), (x2, y2), (255, 165, 0), 2)
-                label = f"ID: {face_id}"
-                (w, h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 1.0, 2)
-                cv2.rectangle(img, (x1, y1 - h - 10), (x1 + w, y1), (255, 0, 0), -1)
-                cv2.putText(img, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+            # Draw persistent boxes on the live feed
+            cv2.rectangle(img, (x1, y1), (x2, y2), (255, 165, 0), 2)
+            cv2.putText(img, f"ID: {face_id}", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
-            # Store in session state for UI selection
+        # 2. ONLY store a snapshot every 5 seconds
+        if time.time() - self.last_process_time > 5:
             timestamp = time.strftime("%H:%M:%S")
+            # We copy the image so it doesn't get cleared by the next frame
             st.session_state['webcam_frames'][f"Capture at {timestamp}"] = (img.copy(), frame_results)
+            self.last_process_time = time.time()
             
         return img
         
@@ -150,17 +146,15 @@ if models:
                     else: st.info("No faces detected.")
 
     elif mode == "Live Webcam":
-        st.write("Analysis runs every 5 seconds.")
+        st.write("Live feed active. Snapshots are saved automatically every 5 seconds.")
         webrtc_streamer(key="face-analysis", video_transformer_factory=lambda: FaceAnalyzer(models))
         
-        # Display stored results
-        if 'webcam_frames' in st.session_state and st.session_state['webcam_frames']:
-            selection = st.selectbox("Select a captured frame:", list(st.session_state['webcam_frames'].keys()))
+        # Display snapshots
+        if st.session_state.get('webcam_frames'):
+            keys = list(st.session_state['webcam_frames'].keys())
+            selection = st.selectbox("Select a captured frame:", keys)
             cap_img, cap_data = st.session_state['webcam_frames'][selection]
             
-            col1, col2 = st.columns([2, 1])
-            with col1: st.image(cv2.cvtColor(cap_img, cv2.COLOR_BGR2RGB), use_container_width=True)
-            with col2:
-                df = pd.DataFrame(cap_data)
-                if not df.empty:
-                    st.dataframe(df.set_index('ID'), use_container_width=True)
+            st.image(cv2.cvtColor(cap_img, cv2.COLOR_BGR2RGB), use_container_width=True)
+            if cap_data:
+                st.dataframe(pd.DataFrame(cap_data).set_index('ID'), use_container_width=True)
