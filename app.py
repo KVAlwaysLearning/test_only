@@ -146,15 +146,37 @@ if models:
                     else: st.info("No faces detected.")
 
     elif mode == "Live Webcam":
-        st.write("Live feed active. Snapshots are saved automatically every 5 seconds.")
-        webrtc_streamer(key="face-analysis", video_transformer_factory=lambda: FaceAnalyzer(models))
+        st.subheader("Live Webcam Feed")
+        webrtc_streamer(
+            key="face-analysis", 
+            video_transformer_factory=lambda: FaceAnalyzer(models),
+            rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+        )
+
+        st.markdown("---")
+        st.subheader("Captured Snapshots Gallery")
         
-        # Display snapshots
-        if st.session_state.get('webcam_frames'):
-            keys = list(st.session_state['webcam_frames'].keys())
-            selection = st.selectbox("Select a captured frame:", keys)
-            cap_img, cap_data = st.session_state['webcam_frames'][selection]
+        # Access the frames captured by the background thread
+        if 'webcam_frames' in st.session_state and st.session_state['webcam_frames']:
+            # Create a dropdown to select from captured snapshots
+            snapshot_keys = list(st.session_state['webcam_frames'].keys())
             
-            st.image(cv2.cvtColor(cap_img, cv2.COLOR_BGR2RGB), use_container_width=True)
-            if cap_data:
-                st.dataframe(pd.DataFrame(cap_data).set_index('ID'), use_container_width=True)
+            # Use a selectbox to pick a frame
+            selected_key = st.selectbox("Select a snapshot to review:", snapshot_keys)
+            
+            # Retrieve data for the selection
+            cap_img, cap_data = st.session_state['webcam_frames'][selected_key]
+            
+            # Display results below the video box
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                st.image(cv2.cvtColor(cap_img, cv2.COLOR_BGR2RGB), caption=selected_key, use_container_width=True)
+            with col2:
+                if cap_data:
+                    st.markdown("#### Analysis Results")
+                    df = pd.DataFrame(cap_data)
+                    st.dataframe(df.set_index('ID'), use_container_width=True)
+                else:
+                    st.info("No faces were detected in this snapshot.")
+        else:
+            st.info("No snapshots captured yet. Wait for 5 seconds for the first auto-capture.")
